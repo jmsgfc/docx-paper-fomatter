@@ -1,6 +1,6 @@
 # DOCX Paper Formatter
 
-[English](./README.md) | [简体中文](./README.zh-CN.md) | [繁體中文](./README.zh-TW.md) | [日本語](./README.ja.md)
+[English](./README.md) | [简体中文](./docs/README.zh-CN.md) | [繁體中文](./docs/README.zh-TW.md) | [日本語](./docs/README.ja.md)
 
 ![Skill](https://img.shields.io/badge/Codex-Skill-0A7B83)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
