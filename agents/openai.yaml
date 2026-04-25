@@ -1,0 +1,4 @@
+interface:
+  display_name: "DOCX Paper Formatter"
+  short_description: "Format papers by extracting teacher rules from text/tables into reusable styles, heading levels, and validated JSON config."
+  default_prompt: "Use this skill when a user needs a paper DOCX normalized against a teacher formatting requirement DOCX, extracting layout and heading-level rules from teacher text or tables when possible, optionally saving them as reusable validated JSON config plus schema, and applying reusable Word styles, multilevel heading numbering, page setup, and a format-check report."

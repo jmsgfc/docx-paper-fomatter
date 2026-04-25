@@ -1,0 +1,102 @@
+{
+  "skill": "docx-paper-formatter",
+  "test_cases": [
+    {
+      "name": "teacher_format_and_reusable_heading_numbering",
+      "prompt": "请根据教师格式要求文档，把待修改论文文档整理成规范 Word 样式，并建立可复用多级标题编号，后续新增同级标题要能继续编号。",
+      "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
+      "expected_conditions": [
+        "输出一个规范化后的 .docx 文件",
+        "输出 Markdown 格式检查报告",
+        "论文标题、摘要、关键词、一级标题、二级标题、正文、参考文献绑定到清晰的 Word 样式",
+        "word/numbering.xml 存在并包含多级列表",
+        "多级列表第 1/2/3 级通过 pStyle 绑定 PaperHeading1/PaperHeading2/PaperHeading3",
+        "PaperHeading1/PaperHeading2/PaperHeading3 样式自身包含 numPr",
+        "正文页码从正文节开始，封面不显示页码"
+      ]
+    },
+    {
+      "name": "not_fixed_manual_numbers",
+      "prompt": "不要把一、1.1 这些标题编号写死，要让我以后新增同级标题时能自动编号。",
+      "inputs": ["格式要求.docx", "论文.docx"],
+      "expected_conditions": [
+        "识别并移除标题正文里的手写编号或在报告中说明未移除原因",
+        "创建 Word 多级列表而不是只改字体字号",
+        "报告明确说明多级标题编号是否可复用"
+      ]
+    },
+    {
+      "name": "numeric_space_first_level_headings",
+      "prompt": "论文一级标题是 1 标题、2 标题 这种格式，请识别成一级标题并改成可复用自动编号。",
+      "inputs": ["格式要求.docx", "论文.docx"],
+      "expected_conditions": [
+        "数字加空格开头的章节标题被识别为 PaperHeading1",
+        "标题正文中的数字前缀被移除，编号由 Word 多级列表生成",
+        "报告列出这些标题为一级标题"
+      ]
+    },
+    {
+      "name": "continuous_numeric_multilevel_numbering",
+      "prompt": "请把论文标题默认整理成 1、1.1、1.1.1 这种连续多级编号，不要出现后半部分重新从 1 开始的情况。",
+      "inputs": ["格式要求.docx", "待修改论文文档.docx"],
+      "expected_conditions": [
+        "PaperHeading1/PaperHeading2/PaperHeading3 默认使用数字编号格式 %1、%1.%2、%1.%2.%3",
+        "所有已识别标题段落和标题样式使用同一个 numId",
+        "段落级 numPr 不应覆盖成另一套 numId",
+        "报告列出标题编号连续性检查结果",
+        "二级标题 1.2 不应被误判为一级标题"
+      ]
+    },
+    {
+      "name": "style_not_direct_formatting",
+      "prompt": "不要只是改字体字号，请把论文标题和正文等内容套用 Word 样式。",
+      "inputs": ["教师格式要求.docx", "论文.docx"],
+      "expected_conditions": [
+        "创建或复用论文标题、论文正文、参考文献正文等样式",
+        "报告列出已应用或新建的样式",
+        "没有把所有段落统一套成同一种格式"
+      ]
+    },
+    {
+      "name": "missing_cover_fields_edge_case",
+      "prompt": "帮我按老师要求整理这个作业 Word，封面信息我还没填。",
+      "inputs": ["格式要求.docx", "作业.docx"],
+      "expected_conditions": [
+        "保留封面学院、班级、姓名、学号、指导老师字段",
+        "不自行猜测个人信息",
+        "检查报告明确指出封面信息需要人工补充"
+      ]
+    },
+    {
+      "name": "teacher_doc_driven_rules_not_hardcoded",
+      "prompt": "按老师给的格式要求自动整理论文，但不要把某个学校模板写死；优先从教师要求文档里提取规则，缺失时再回退默认值。",
+      "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
+      "expected_conditions": [
+        "脚本先解析教师格式要求文档中的显式规则与示例封面，再决定正文样式、页面设置、封面模板和最低字数",
+        "格式检查报告列出关键规则的来源，如教师要求文本、教师示例封面、论文现有主导编号或默认值",
+        "学校名称、课程名称、页边距和正文样式不是只能依赖单一硬编码模板"
+      ]
+    },
+    {
+      "name": "heading_levels_and_json_config_reuse",
+      "prompt": "把教师格式要求里的一级、二级、三级标题样式单独提取出来，并导出成可复用的 JSON 配置；下次直接用配置改论文。",
+      "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
+      "expected_conditions": [
+        "脚本能分别记录一级标题、二级标题、三级标题的字体、字号、对齐、段前和段后，缺失时说明是派生默认值",
+        "脚本支持把提取结果导出到 JSON 配置文件，并支持加载 JSON 配置直接执行格式化",
+        "格式检查报告列出一级、二级、三级标题样式及其来源"
+      ]
+    },
+    {
+      "name": "table_rules_and_schema_validation",
+      "prompt": "老师把一级、二级、三级标题格式写在 Word 表格里，请从表格里提取规则，并给 JSON 配置做稳定 schema 和校验。",
+      "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
+      "expected_conditions": [
+        "脚本能从教师文档表格中读取一级、二级、三级标题的字体、字号、对齐、段前和段后",
+        "标题样式来源可以标记为教师要求表格",
+        "JSON 配置在写出前和加载后都会校验 schema，不合法配置会报错",
+        "脚本支持导出 schema 描述文件，供后续维护配置使用"
+      ]
+    }
+  ]
+}
