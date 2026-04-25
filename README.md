@@ -1,6 +1,6 @@
 # DOCX Paper Formatter
 
-[English](./README.md) | [简体中文](./docs/README.zh-CN.md) | [繁體中文](./docs/README.zh-TW.md) | [日本語](./docs/README.ja.md)
+[English](./README.md) | [简体中文](./docs/README.zh-CN.md) | [繁體中文](./docs/README.zh-TW.md) | [日本語](./docs/README.ja.md) | [한국어](./docs/README.ko.md)
 
 ![Skill](https://img.shields.io/badge/Codex-Skill-0A7B83)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
@@ -25,7 +25,7 @@ This Codex skill is for users who need to normalize a paper `.docx` against a te
 
 ## Install
 
-Place this repository in your local Codex skills directory and keep the folder name as `docx-paper-formatter`.
+Place this skill into the `skills` directory and keep the folder name as `docx-paper-formatter`.
 
 ```text
 $CODEX_HOME/skills/docx-paper-formatter/

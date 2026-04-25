@@ -1,6 +1,6 @@
 # DOCX 論文格式規範 Skill
 
-[English](../README.md) | [简体中文](./README.zh-CN.md) | [繁體中文](./README.zh-TW.md) | [日本語](./README.ja.md)
+[English](../README.md) | [简体中文](./README.zh-CN.md) | [繁體中文](./README.zh-TW.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md)
 
 ![Skill](https://img.shields.io/badge/Codex-Skill-0A7B83)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
@@ -25,7 +25,7 @@
 
 ## 安裝
 
-把這個倉庫放到本地 Codex 的 skills 目錄中，並保持資料夾名稱為 `docx-paper-formatter`。
+將這個 skill 放入 `skills` 目錄中，並保持目錄名為 `docx-paper-formatter`。
 
 ```text
 $CODEX_HOME/skills/docx-paper-formatter/
