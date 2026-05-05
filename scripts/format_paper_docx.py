@@ -45,6 +45,25 @@ SIZE_NAME_TO_HALF_POINTS = {
 }
 
 
+def default_output_docx_path(paper_docx):
+    return paper_docx.with_name(f"{paper_docx.stem}_格式规范化.docx")
+
+
+def default_report_dir(paper_docx):
+    return paper_docx.parent / "report"
+
+
+def resolve_report_artifact(path, report_dir, default_name=None):
+    if path is None:
+        if default_name is None:
+            return None
+        return report_dir / default_name
+    path = Path(path)
+    if not path.is_absolute() and path.parent == Path("."):
+        return report_dir / path.name
+    return path
+
+
 @dataclass
 class StyleSpec:
     east_asia: Optional[str] = None
@@ -101,6 +120,7 @@ class TeacherConfig:
     heading1_style: StyleSpec = field(default_factory=lambda: StyleSpec(outline_level=0))
     heading2_style: StyleSpec = field(default_factory=lambda: StyleSpec(outline_level=1))
     heading3_style: StyleSpec = field(default_factory=lambda: StyleSpec(outline_level=2))
+    heading4_style: StyleSpec = field(default_factory=lambda: StyleSpec(outline_level=3))
     abstract_style: StyleSpec = field(default_factory=lambda: StyleSpec(first_line_chars="200"))
     keywords_style: StyleSpec = field(default_factory=lambda: StyleSpec(first_line_chars="200"))
     reference_title_style: StyleSpec = field(
@@ -135,6 +155,7 @@ class TeacherConfig:
             "heading1_style": "派生默认值",
             "heading2_style": "派生默认值",
             "heading3_style": "派生默认值",
+            "heading4_style": "派生默认值",
             "page": "默认值",
             "numbering_scheme": "默认值",
             "min_chars": "默认值",
@@ -189,6 +210,105 @@ def set_para_text(p, text):
                 t.text = ""
 
 
+def paragraph_has_preserved_object(p):
+    return bool(
+        p.xpath(
+            ".//*[local-name()='drawing' or local-name()='pict' or local-name()='object' or "
+            "local-name()='OLEObject' or local-name()='oMath' or local-name()='oMathPara']"
+        )
+    )
+
+
+def looks_like_table_caption(text):
+    normalized = normalize_text(text)
+    return re.match(r"^表(?:\d+|[一二三四五六七八九十]+)(?:[-－.．]\d+)?", normalized) is not None
+
+
+def set_keep_next(p):
+    ppr = ensure_ppr(p)
+    if ppr.find("w:keepNext", NS) is None:
+        ppr.insert(0, etree.Element(w("keepNext")))
+    return ppr
+
+
+def format_table_caption(p):
+    ppr = set_keep_next(p)
+    for tag in ("jc", "spacing"):
+        old = ppr.find(f"w:{tag}", NS)
+        if old is not None:
+            ppr.remove(old)
+    child(ppr, "jc", val="center")
+    child(ppr, "spacing", before="120", after="120")
+    return ppr
+
+
+def remove_child(parent, tag):
+    old = parent.find(f"w:{tag}", NS)
+    if old is not None:
+        parent.remove(old)
+
+
+def set_border(parent, tag, val="single", sz="4"):
+    remove_child(parent, tag)
+    border = child(parent, tag, val=val)
+    if val != "nil":
+        set_w_attr(border, "sz", sz)
+        set_w_attr(border, "space", "0")
+        set_w_attr(border, "color", "auto")
+    return border
+
+
+def format_three_line_table(tbl):
+    tbl_pr = tbl.find("w:tblPr", NS)
+    if tbl_pr is None:
+        tbl_pr = etree.Element(w("tblPr"))
+        tbl.insert(0, tbl_pr)
+
+    remove_child(tbl_pr, "tblBorders")
+    tbl_borders = child(tbl_pr, "tblBorders")
+    set_border(tbl_borders, "top", sz="12")
+    set_border(tbl_borders, "left", val="nil")
+    set_border(tbl_borders, "bottom", sz="12")
+    set_border(tbl_borders, "right", val="nil")
+    set_border(tbl_borders, "insideH", val="nil")
+    set_border(tbl_borders, "insideV", val="nil")
+
+    rows = tbl.xpath("./w:tr", namespaces=NS)
+    for row_index, row in enumerate(rows):
+        cells = row.xpath("./w:tc", namespaces=NS)
+        for cell in cells:
+            tc_pr = cell.find("w:tcPr", NS)
+            if tc_pr is None:
+                tc_pr = etree.Element(w("tcPr"))
+                cell.insert(0, tc_pr)
+            remove_child(tc_pr, "tcBorders")
+            tc_borders = child(tc_pr, "tcBorders")
+            if row_index == 0:
+                set_border(tc_borders, "top", sz="12")
+            else:
+                set_border(tc_borders, "top", val="nil")
+            set_border(tc_borders, "left", val="nil")
+            if row_index == 0 and len(rows) == 1:
+                set_border(tc_borders, "bottom", sz="12")
+            elif row_index == 0:
+                set_border(tc_borders, "bottom", sz="4")
+            elif row_index == len(rows) - 1:
+                set_border(tc_borders, "bottom", sz="12")
+            else:
+                set_border(tc_borders, "bottom", val="nil")
+            set_border(tc_borders, "right", val="nil")
+            set_border(tc_borders, "insideH", val="nil")
+            set_border(tc_borders, "insideV", val="nil")
+    return tbl
+
+
+def set_page_break_before(p):
+    ppr = ensure_ppr(p)
+    if ppr.find("w:pageBreakBefore", NS) is None:
+        ppr.insert(0, etree.Element(w("pageBreakBefore")))
+    return ppr
+
+
 def ensure_ppr(p):
     ppr = p.find("w:pPr", NS)
     if ppr is None:
@@ -222,6 +342,11 @@ def apply_style_and_numbering(p, style_id, ilvl, num_id):
     child(num_pr, "ilvl", val=str(ilvl))
     child(num_pr, "numId", val=str(num_id))
     return ppr
+
+
+def add_page_break_after(p):
+    r = child(p, "r")
+    child(r, "br", type="page")
 
 
 def make_spacing(line_rule="exact", line="440"):
@@ -286,6 +411,17 @@ def add_paragraph_style(styles_root, style_id, name, spec, num_id=None, ilvl=Non
         child(rpr, "bCs")
 
 
+def add_keep_lines_to_style(styles_root, style_id):
+    style = styles_root.find(f"./w:style[@w:styleId='{style_id}']", NS)
+    if style is None:
+        return
+    ppr = style.find("w:pPr", NS)
+    if ppr is None:
+        ppr = child(style, "pPr")
+    if ppr.find("w:keepLines", NS) is None:
+        child(ppr, "keepLines")
+
+
 def ensure_content_type(parts, part_name, content_type):
     ct = etree.fromstring(parts["[Content_Types].xml"])
     if not ct.xpath(f"./ct:Override[@PartName='/{part_name}']", namespaces=NS):
@@ -318,14 +454,16 @@ def ensure_document_relationship(parts, rel_type, target):
 def build_level_specs(numbering_scheme):
     if numbering_scheme == "chinese":
         return [
-            (0, "PaperHeading1", "chineseCounting", "%1、", "left", "0", "420"),
-            (1, "PaperHeading2", "chineseCounting", "（%2）", "left", "0", "420"),
-            (2, "PaperHeading3", "decimal", "%3.", "left", "0", "420"),
+            (0, "PaperHeading1", "chineseCounting", "%1、", "left", "0", "0"),
+            (1, "PaperHeading2", "chineseCounting", "（%2）", "left", "0", "0"),
+            (2, "PaperHeading3", "decimal", "%3.", "left", "0", "0"),
+            (3, "PaperHeading4", "decimal", "%3.%4", "left", "0", "0"),
         ]
     return [
-        (0, "PaperHeading1", "decimal", "%1", "left", "0", "420"),
-        (1, "PaperHeading2", "decimal", "%1.%2", "left", "0", "420"),
-        (2, "PaperHeading3", "decimal", "%1.%2.%3", "left", "0", "420"),
+        (0, "PaperHeading1", "decimal", "%1", "left", "0", "0"),
+        (1, "PaperHeading2", "decimal", "%1.%2", "left", "0", "0"),
+        (2, "PaperHeading3", "decimal", "%1.%2.%3", "left", "0", "0"),
+        (3, "PaperHeading4", "decimal", "%1.%2.%3.%4", "left", "0", "0"),
     ]
 
 
@@ -450,24 +588,68 @@ def ensure_styles(styles_root, num_id, config):
     heading1 = resolve_style(replace(deepcopy(heading_base), outline_level=0), config.heading1_style)
     heading2 = resolve_style(replace(deepcopy(heading_base), outline_level=1), config.heading2_style)
     heading3 = resolve_style(replace(deepcopy(heading_base), outline_level=2), config.heading3_style)
-    abstract_style = replace(config.body_style, first_line_chars=config.body_style.first_line_chars or "200")
-    keywords_style = replace(config.body_style, first_line_chars=config.body_style.first_line_chars or "200")
-    reference_body_style = replace(config.body_style, first_line_chars="0")
-    reference_title_style = replace(
-        heading_base,
-        jc=config.reference_title_style.jc or "center",
-        outline_level=0,
+    heading4 = resolve_style(replace(deepcopy(heading_base), outline_level=3), config.heading4_style)
+    abstract_style = resolve_style(
+        replace(deepcopy(config.body_style), first_line_chars=config.body_style.first_line_chars or "200"),
+        config.abstract_style,
+    )
+    keywords_style = resolve_style(
+        replace(deepcopy(config.body_style), first_line_chars=config.body_style.first_line_chars or "200"),
+        config.keywords_style,
+    )
+    keywords_style.first_line_chars = None
+    keywords_style.before = "0"
+    keywords_style.after = "0"
+    reference_body_style = resolve_style(
+        replace(deepcopy(config.body_style), first_line_chars="0"),
+        config.reference_body_style,
+    )
+    reference_title_style = resolve_style(
+        replace(deepcopy(heading_base), jc="center", outline_level=0),
+        config.reference_title_style,
     )
 
     add_paragraph_style(styles_root, "PaperTitle", "论文标题", config.title_style)
     add_paragraph_style(styles_root, "PaperHeading1", "论文一级标题", heading1, num_id=num_id, ilvl=0)
     add_paragraph_style(styles_root, "PaperHeading2", "论文二级标题", heading2, num_id=num_id, ilvl=1)
     add_paragraph_style(styles_root, "PaperHeading3", "论文三级标题", heading3, num_id=num_id, ilvl=2)
+    add_paragraph_style(styles_root, "PaperHeading4", "论文四级标题", heading4, num_id=num_id, ilvl=3)
     add_paragraph_style(styles_root, "PaperBody", "论文正文", body)
     add_paragraph_style(styles_root, "AbstractStyle", "摘要", abstract_style)
+    add_paragraph_style(
+        styles_root,
+        "ChineseAbstractTitle",
+        "中文摘要标题",
+        StyleSpec(east_asia="黑体", ascii_font="Times New Roman", size_half_points="28", bold=True, jc="center", line_rule="exact", line="480"),
+    )
+    add_paragraph_style(
+        styles_root,
+        "ChineseAbstractBody",
+        "中文摘要正文",
+        StyleSpec(east_asia="宋体", ascii_font="Times New Roman", size_half_points="24", bold=False, first_line_chars=None, line_rule="exact", line="400"),
+    )
+    add_paragraph_style(
+        styles_root,
+        "EnglishAbstractTitle",
+        "英文摘要标题",
+        StyleSpec(east_asia="Arial Black", ascii_font="Arial Black", size_half_points="28", bold=True, jc="center", line_rule="exact", line="480"),
+    )
+    add_paragraph_style(
+        styles_root,
+        "EnglishAbstractBody",
+        "英文摘要正文",
+        StyleSpec(east_asia="Times New Roman", ascii_font="Times New Roman", size_half_points="24", bold=False, first_line_chars=None, line_rule="exact", line="320"),
+    )
     add_paragraph_style(styles_root, "KeywordsStyle", "关键词", keywords_style)
+    add_paragraph_style(
+        styles_root,
+        "EnglishKeywordsStyle",
+        "英文关键词",
+        StyleSpec(east_asia="Arial Black", ascii_font="Arial Black", size_half_points="24", bold=False, first_line_chars=None, line_rule="exact", line="320"),
+    )
     add_paragraph_style(styles_root, "ReferenceTitle", "参考文献标题", reference_title_style)
     add_paragraph_style(styles_root, "ReferenceBody", "参考文献正文", reference_body_style)
+    add_keep_lines_to_style(styles_root, "ReferenceBody")
 
 
 def make_paragraph(text="", style_id="PaperBody"):
@@ -507,17 +689,56 @@ def make_section(page_spec, with_next_page=False):
     return sect
 
 
-def classify(text, index, in_references, previous_heading_ilvl=None):
+def is_chinese_abstract_title(text):
+    return normalize_text(text) == "摘要"
+
+
+def is_english_abstract_title(text):
+    return normalize_text(text).lower() == "abstract"
+
+
+def is_keywords_title(text):
+    return normalize_text(text).lower() in {"关键词", "keywords"}
+
+
+def is_toc_title(text):
+    return normalize_text(text) in {"目录", "contents", "tableofcontents"}
+
+
+def looks_like_toc_entry(text):
+    return re.match(r"^\d+(?:\.\d+)*(?:\s|　)+.+\d+$", text) is not None
+
+
+def classify(text, index, in_references, previous_heading_ilvl=None, in_toc=False, abstract_state=None):
     if index == 0:
         return "PaperTitle", "论文标题", None, text
+    if is_toc_title(text):
+        return "PaperBody", "目录", None, text
+    if in_toc and looks_like_toc_entry(text):
+        return "PaperBody", "目录条目", None, text
+    if is_chinese_abstract_title(text):
+        return "ChineseAbstractTitle", "中文摘要标题", None, text
+    if is_english_abstract_title(text):
+        return "EnglishAbstractTitle", "英文摘要标题", None, text
     if text.startswith(("摘要：", "摘要:")):
-        return "AbstractStyle", "摘要", None, text
+        return "ChineseAbstractBody", "中文摘要正文", None, text
+    if abstract_state == "cn" and not is_keywords_title(text) and not text.startswith(("关键词：", "关键词:", "Keywords:", "Keywords：")):
+        return "ChineseAbstractBody", "中文摘要正文", None, text
+    if abstract_state == "en" and not is_keywords_title(text) and not text.startswith(("关键词：", "关键词:", "Keywords:", "Keywords：")):
+        return "EnglishAbstractBody", "英文摘要正文", None, text
+    if is_keywords_title(text):
+        return "KeywordsStyle", "关键词", None, text
+    if text.startswith(("Keywords:", "Keywords：", "Key words:", "Key words：")):
+        return "EnglishKeywordsStyle", "英文关键词", None, text
     if text.startswith(("关键词：", "关键词:")):
         return "KeywordsStyle", "关键词", None, text
     if re.fullmatch(r"参考文献[:：]?", text):
         return "ReferenceTitle", "参考文献标题", None, "参考文献"
     if in_references:
         return "ReferenceBody", "参考文献正文", None, text
+    if re.match(r"^\d+\.\d+\.\d+\.\d+(?:\s|　|$)", text):
+        clean = re.sub(r"^\d+\.\d+\.\d+\.\d+(?:\s|　)*", "", text)
+        return "PaperHeading4", "四级标题", 3, clean
     if re.match(r"^\d+\.\d+\.\d+(?:\s|　|$)", text):
         clean = re.sub(r"^\d+\.\d+\.\d+(?:\s|　)*", "", text)
         return "PaperHeading3", "三级标题", 2, clean
@@ -643,10 +864,10 @@ def enforce_heading_numbering_continuity(document, styles_root, parts, num_id, a
             continue
         style_id = ppr.xpath("./w:pStyle/@w:val", namespaces=NS)
         style_id = style_id[0] if style_id else ""
-        if style_id not in {"PaperHeading1", "PaperHeading2", "PaperHeading3"}:
+        if style_id not in {"PaperHeading1", "PaperHeading2", "PaperHeading3", "PaperHeading4"}:
             continue
         heading_count += 1
-        ilvl = {"PaperHeading1": 0, "PaperHeading2": 1, "PaperHeading3": 2}[style_id]
+        ilvl = {"PaperHeading1": 0, "PaperHeading2": 1, "PaperHeading3": 2, "PaperHeading4": 3}[style_id]
         old_num_id = ppr.xpath("./w:numPr/w:numId/@w:val", namespaces=NS)
         old_ilvl = ppr.xpath("./w:numPr/w:ilvl/@w:val", namespaces=NS)
         if old_num_id != [str(num_id)] or old_ilvl != [str(ilvl)]:
@@ -1211,11 +1432,98 @@ def finalize_heading_styles(config):
         1: replace(deepcopy(base), outline_level=0),
         2: replace(deepcopy(base), outline_level=1),
         3: replace(deepcopy(base), outline_level=2),
+        4: replace(deepcopy(base), outline_level=3),
     }
-    for level in [1, 2, 3]:
+    for level in [1, 2, 3, 4]:
         key = f"heading{level}_style"
         resolved = resolve_style(defaults[level], getattr(config, key))
         setattr(config, key, resolved)
+
+
+def apply_layout_requirements_from_text(texts, config):
+    joined = "\n".join(texts)
+    if "报告（论文）的版式要求" not in joined and "正文段落和标题一律取" not in joined:
+        return
+
+    # “三、报告（论文）的版式要求” is the explicit layout rule section, so it
+    # overrides residual formatting inherited from examples in the teacher DOCX.
+    config.page.top = cm_to_twips("2.5")
+    config.page.left = cm_to_twips("2.5")
+    config.page.bottom = cm_to_twips("2.0")
+    config.page.right = cm_to_twips("2.0")
+    add_source(config, "page", "教师版式要求文本")
+
+    config.title_style.line_rule = "exact"
+    config.title_style.line = "600"
+    config.title_style.after = "600"
+    config.title_style.size_half_points = "36"
+    config.title_style.east_asia = "黑体"
+    config.title_style.ascii_font = "Times New Roman"
+    config.title_style.bold = True
+    config.title_style.jc = "center"
+    add_source(config, "title_style", "教师版式要求文本")
+
+    config.body_style.line_rule = "exact"
+    config.body_style.line = "400"
+    config.body_style.before = "120"
+    config.body_style.after = "120"
+    config.body_style.first_line_chars = "200"
+    add_source(config, "body_style", "教师版式要求文本")
+
+    config.abstract_style.line_rule = "exact"
+    config.abstract_style.line = "400"
+    config.abstract_style.before = "0"
+    config.abstract_style.after = "0"
+    config.abstract_style.first_line_chars = None
+    config.keywords_style.line_rule = "exact"
+    config.keywords_style.line = "320"
+    config.keywords_style.before = "0"
+    config.keywords_style.after = "0"
+    config.keywords_style.first_line_chars = None
+
+    heading_specs = [
+        (config.heading1_style, "36", "both", "360"),
+        (config.heading2_style, "32", "both", "240"),
+        (config.heading3_style, "30", "both", "120"),
+        (config.heading4_style, "24", "both", "120"),
+    ]
+    for spec, size, align, after in heading_specs:
+        spec.east_asia = "黑体"
+        spec.ascii_font = "黑体"
+        spec.size_half_points = size
+        spec.bold = True
+        spec.jc = align
+        spec.first_line_chars = None
+        spec.line_rule = "exact"
+        spec.line = "400"
+        spec.before = "0"
+        spec.after = after
+    add_source(config, "heading1_style", "教师版式要求文本")
+    add_source(config, "heading2_style", "教师版式要求文本")
+    add_source(config, "heading3_style", "教师版式要求文本")
+    add_source(config, "heading4_style", "用户补充版式要求")
+
+    config.reference_title_style.line_rule = "exact"
+    config.reference_title_style.line = "400"
+    config.reference_title_style.east_asia = "宋体"
+    config.reference_title_style.ascii_font = "宋体"
+    config.reference_title_style.size_half_points = "24"
+    config.reference_title_style.bold = True
+    config.reference_title_style.jc = "center"
+    config.reference_title_style.before = "0"
+    config.reference_title_style.after = "600"
+    config.reference_body_style.line_rule = "exact"
+    config.reference_body_style.line = "340"
+    config.reference_body_style.east_asia = "宋体"
+    config.reference_body_style.ascii_font = "宋体"
+    config.reference_body_style.size_half_points = "24"
+    config.reference_body_style.bold = False
+    config.reference_body_style.jc = None
+    config.reference_body_style.first_line_chars = "0"
+    config.reference_body_style.before = "60"
+    config.reference_body_style.after = "0"
+    add_source(config, "reference_title_style", "教师版式要求文本")
+    add_source(config, "reference_body_style", "教师版式要求文本")
 
 
 def extract_teacher_config(teacher_docx, paper_texts):
@@ -1233,6 +1541,7 @@ def extract_teacher_config(teacher_docx, paper_texts):
     apply_heading_rules_from_tables(teacher_tables, config)
     infer_numbering_scheme(teacher_texts, paper_texts, config)
     finalize_heading_styles(config)
+    apply_layout_requirements_from_text(teacher_texts, config)
     return config
 
 def style_from_dict(data):
@@ -1251,6 +1560,7 @@ def config_from_dict(data):
         "heading1_style",
         "heading2_style",
         "heading3_style",
+        "heading4_style",
         "abstract_style",
         "keywords_style",
         "reference_title_style",
@@ -1283,6 +1593,7 @@ def get_config_schema():
             "heading1_style",
             "heading2_style",
             "heading3_style",
+            "heading4_style",
             "page",
             "numbering_scheme",
             "min_chars",
@@ -1476,17 +1787,18 @@ def build_report(config, num_id, abstract_id, reference_num_id, numbering_check,
     headings1 = [(orig, clean) for orig, clean, style_id, _, _ in classified if style_id == "PaperHeading1"]
     headings2 = [(orig, clean) for orig, clean, style_id, _, _ in classified if style_id == "PaperHeading2"]
     headings3 = [(orig, clean) for orig, clean, style_id, _, _ in classified if style_id == "PaperHeading3"]
+    headings4 = [(orig, clean) for orig, clean, style_id, _, _ in classified if style_id == "PaperHeading4"]
     refs = [orig for orig, _, style_id, _, _ in classified if style_id == "ReferenceBody"]
     missing = []
-    if not any(style_id == "AbstractStyle" for _, _, style_id, _, _ in classified):
+    if not any(style_id in {"AbstractStyle", "ChineseAbstractTitle", "ChineseAbstractBody", "EnglishAbstractTitle", "EnglishAbstractBody"} for _, _, style_id, _, _ in classified):
         missing.append("Missing abstract")
-    if not any(style_id == "KeywordsStyle" for _, _, style_id, _, _ in classified):
+    if not any(style_id in {"KeywordsStyle", "EnglishKeywordsStyle"} for _, _, style_id, _, _ in classified):
         missing.append("Missing keywords")
     if not any(style_id == "ReferenceTitle" for _, _, style_id, _, _ in classified):
         missing.append("Missing references section")
 
     approx_chars = count_chars(
-        [clean for _, clean, style_id, _, _ in classified if style_id in {"PaperBody", "PaperHeading1", "PaperHeading2", "PaperHeading3"}]
+        [clean for _, clean, style_id, _, _ in classified if style_id in {"PaperBody", "PaperHeading1", "PaperHeading2", "PaperHeading3", "PaperHeading4"}]
     )
     if approx_chars < config.min_chars:
         missing.append(f"Body length is about {approx_chars}, below minimum {config.min_chars}")
@@ -1505,6 +1817,7 @@ def build_report(config, num_id, abstract_id, reference_num_id, numbering_check,
         f"| Heading 1 style | {describe_style(config.heading1_style)} | {config.sources['heading1_style']} |",
         f"| Heading 2 style | {describe_style(config.heading2_style)} | {config.sources['heading2_style']} |",
         f"| Heading 3 style | {describe_style(config.heading3_style)} | {config.sources['heading3_style']} |",
+        f"| Heading 4 style | {describe_style(config.heading4_style)} | {config.sources['heading4_style']} |",
         f"| Reference title style | {describe_style(config.reference_title_style)} | {config.sources.get('reference_title_style', 'derived default')} |",
         f"| Reference body style | {describe_style(config.reference_body_style)} | {config.sources.get('reference_body_style', 'derived default')} |",
         *([f"| Config replay | {config_origin} | external config |"] if config_origin else []),
@@ -1520,9 +1833,15 @@ def build_report(config, num_id, abstract_id, reference_num_id, numbering_check,
         f"| Heading 1 | PaperHeading1 | numId={num_id}, ilvl=0 |",
         f"| Heading 2 | PaperHeading2 | numId={num_id}, ilvl=1 |",
         f"| Heading 3 | PaperHeading3 | numId={num_id}, ilvl=2 |",
+        f"| Heading 4 | PaperHeading4 | numId={num_id}, ilvl=3 |",
         "| Body | PaperBody | none |",
         "| Abstract | AbstractStyle | none |",
+        "| Chinese abstract title | ChineseAbstractTitle | none |",
+        "| Chinese abstract body | ChineseAbstractBody | none |",
+        "| English abstract title | EnglishAbstractTitle | none |",
+        "| English abstract body | EnglishAbstractBody | none |",
         "| Keywords | KeywordsStyle | none |",
+        "| English keywords | EnglishKeywordsStyle | none |",
         "| Reference title | ReferenceTitle | none |",
         f"| Reference body | ReferenceBody | numId={reference_num_id}, ilvl=0 |",
         "",
@@ -1547,6 +1866,9 @@ def build_report(config, num_id, abstract_id, reference_num_id, numbering_check,
         "### Heading 3",
         *( ["- none"] if not headings3 else [f"- {orig} -> {clean}" for orig, clean in headings3] ),
         "",
+        "### Heading 4",
+        *( ["- none"] if not headings4 else [f"- {orig} -> {clean}" for orig, clean in headings4] ),
+        "",
         "## Risks",
         "",
         *( ["- No obvious missing abstract/keywords/references issues detected."] if not missing else [f"- {x}" for x in missing] ),
@@ -1565,8 +1887,8 @@ def build_report(config, num_id, abstract_id, reference_num_id, numbering_check,
 def process(
     teacher_docx=DEFAULT_TEACHER_DOCX,
     paper_docx=DEFAULT_PAPER_DOCX,
-    output_docx=DEFAULT_OUTPUT_DOCX,
-    report_md=DEFAULT_REPORT_MD,
+    output_docx=None,
+    report_md=None,
     config_json=None,
     config_out=None,
     config_only=False,
@@ -1574,9 +1896,13 @@ def process(
 ):
     teacher_docx = Path(teacher_docx)
     paper_docx = Path(paper_docx)
-    output_docx = Path(output_docx)
-    report_md = Path(report_md)
+    report_dir = default_report_dir(paper_docx)
+    output_docx = Path(output_docx) if output_docx is not None else default_output_docx_path(paper_docx)
+    report_md = resolve_report_artifact(report_md, report_dir, f"{paper_docx.stem}_格式检查报告.md")
+    config_out = resolve_report_artifact(config_out, report_dir)
+    schema_out = resolve_report_artifact(schema_out, report_dir)
     if schema_out:
+        schema_out.parent.mkdir(parents=True, exist_ok=True)
         save_schema_json(schema_out)
 
     if not paper_docx.exists():
@@ -1588,7 +1914,8 @@ def process(
     styles = etree.fromstring(parts["word/styles.xml"])
     body = document.find("w:body", NS)
 
-    original_paras = [deepcopy(el) for el in body if el.tag == w("p")]
+    original_body_elems = [deepcopy(el) for el in body if el.tag != w("sectPr")]
+    original_paras = [deepcopy(el) for el in original_body_elems if el.tag == w("p")]
     non_empty = [p for p in original_paras if para_text(p)]
     if not non_empty:
         raise ValueError("待修改论文文档未识别到正文段落")
@@ -1602,6 +1929,7 @@ def process(
         config = extract_teacher_config(teacher_docx, paper_texts)
 
     if config_out:
+        config_out.parent.mkdir(parents=True, exist_ok=True)
         save_config_json(config, config_out)
     if config_only:
         return
@@ -1619,12 +1947,57 @@ def process(
 
     classified = []
     in_refs = False
+    in_toc = False
+    abstract_state = None
     previous_heading_ilvl = None
-    for idx, p in enumerate(non_empty):
+    output_elems = []
+    text_index = 0
+    page_break_before_next_content = False
+    for el in original_body_elems:
+        if el.tag != w("p"):
+            if el.tag == w("tbl"):
+                format_three_line_table(el)
+                if output_elems and output_elems[-1].tag == w("p"):
+                    caption_text = para_text(output_elems[-1])
+                    if looks_like_table_caption(caption_text):
+                        format_table_caption(output_elems[-1])
+            output_elems.append(el)
+            continue
+
+        p = el
         text = para_text(p)
-        style_id, label, ilvl, clean_text = classify(text, idx, in_refs, previous_heading_ilvl)
+        if not text:
+            if page_break_before_next_content:
+                continue
+            output_elems.append(p)
+            continue
+        if paragraph_has_preserved_object(p):
+            if page_break_before_next_content:
+                set_page_break_before(p)
+                page_break_before_next_content = False
+            output_elems.append(p)
+            text_index += 1
+            continue
+
+        idx = text_index
+        text_index += 1
+        style_id, label, ilvl, clean_text = classify(text, idx, in_refs, previous_heading_ilvl, in_toc, abstract_state)
+        if label in {"目录", "目录条目"}:
+            if label == "目录":
+                in_toc = True
+            continue
+        if label == "目录":
+            in_toc = True
+        elif in_toc and label != "目录条目":
+            in_toc = False
         if label == "参考文献标题":
             in_refs = True
+        if label == "中文摘要标题":
+            abstract_state = "cn"
+        elif label == "英文摘要标题":
+            abstract_state = "en"
+        elif style_id in {"KeywordsStyle", "EnglishKeywordsStyle"}:
+            abstract_state = None
         if style_id == "ReferenceBody":
             clean_text = strip_reference_marker(clean_text)
         if clean_text != text:
@@ -1636,12 +2009,20 @@ def process(
         else:
             apply_style_and_numbering(p, style_id, ilvl, num_id)
             previous_heading_ilvl = ilvl
+        if style_id == "ReferenceTitle":
+            set_page_break_before(p)
+        if page_break_before_next_content:
+            set_page_break_before(p)
+            page_break_before_next_content = False
+        if style_id in {"KeywordsStyle", "EnglishKeywordsStyle"}:
+            page_break_before_next_content = True
         classified.append((text, clean_text, style_id, label, ilvl))
+        output_elems.append(p)
 
     for el in list(body):
         body.remove(el)
-    for p in non_empty:
-        body.append(p)
+    for el in output_elems:
+        body.append(el)
     body.append(final_sect)
 
     numbering_check = enforce_heading_numbering_continuity(
@@ -1673,8 +2054,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--teacher", type=Path, default=DEFAULT_TEACHER_DOCX)
     parser.add_argument("--paper", type=Path, default=DEFAULT_PAPER_DOCX)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT_DOCX)
-    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_MD)
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--config", type=Path, default=None, help="Load extracted formatting config from JSON.")
     parser.add_argument("--config-out", type=Path, default=None, help="Write extracted formatting config to JSON.")
     parser.add_argument("--config-only", action="store_true", help="Only extract/save config, do not write output docx.")

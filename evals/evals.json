@@ -10,9 +10,9 @@
         "输出 Markdown 格式检查报告",
         "论文标题、摘要、关键词、一级标题、二级标题、正文、参考文献绑定到清晰的 Word 样式",
         "word/numbering.xml 存在并包含多级列表",
-        "多级列表第 1/2/3 级通过 pStyle 绑定 PaperHeading1/PaperHeading2/PaperHeading3",
-        "PaperHeading1/PaperHeading2/PaperHeading3 样式自身包含 numPr",
-        "正文页码从正文节开始，封面不显示页码"
+        "多级列表第 1/2/3/4 级通过 pStyle 绑定 PaperHeading1/PaperHeading2/PaperHeading3/PaperHeading4",
+        "PaperHeading1/PaperHeading2/PaperHeading3/PaperHeading4 样式自身包含 numPr",
+        "正文页码按要求居中显示"
       ]
     },
     {
@@ -40,7 +40,7 @@
       "prompt": "请把论文标题默认整理成 1、1.1、1.1.1 这种连续多级编号，不要出现后半部分重新从 1 开始的情况。",
       "inputs": ["格式要求.docx", "待修改论文文档.docx"],
       "expected_conditions": [
-        "PaperHeading1/PaperHeading2/PaperHeading3 默认使用数字编号格式 %1、%1.%2、%1.%2.%3",
+        "PaperHeading1/PaperHeading2/PaperHeading3/PaperHeading4 默认使用数字编号格式 %1、%1.%2、%1.%2.%3、%1.%2.%3.%4",
         "所有已识别标题段落和标题样式使用同一个 numId",
         "段落级 numPr 不应覆盖成另一套 numId",
         "报告列出标题编号连续性检查结果",
@@ -58,13 +58,38 @@
       ]
     },
     {
+      "name": "layout_requirements_default_from_final_template",
+      "prompt": "请按老师的报告论文版式要求整理论文：正文段前段后 6 磅、首行缩进 2 字符，各级标题不要有特殊缩进，摘要分页，目录我自己生成。",
+      "inputs": ["格式参考.docx", "2222.docx"],
+      "expected_conditions": [
+        "原文已有目录标题和目录条目不出现在输出正文中",
+        "正文样式 PaperBody 写入固定行距 20 磅、段前 6 磅、段后 6 磅、首行缩进 2 字符",
+        "一级标题段后 18 磅，二级标题段后 12 磅，三级标题段后 6 磅，四级标题段后 6 磅",
+        "PaperHeading1/2/3/4 段落和编号级别均无首行或悬挂缩进，编号缩进 left=0、hanging=0",
+        "中文关键词后有分页符，英文 Keywords 或 Key words 后有分页符"
+      ]
+    },
+    {
+      "name": "abstract_and_reference_formatting",
+      "prompt": "请特别注意中文摘要、英文摘要和参考文献格式，参考文献要自动编号。",
+      "inputs": ["格式参考.docx", "2222.docx"],
+      "expected_conditions": [
+        "中文摘要标题、中文摘要正文、关键词、英文摘要标题、英文摘要正文和英文关键词使用不同的 Word 样式",
+        "Abstract 使用四号 Arial Black、固定行距 24 磅",
+        "英文摘要正文使用小四 Times New Roman、固定行距 16 磅",
+        "参考文献标题使用宋体五号、固定行距 20 磅、段后 30 磅",
+        "参考文献条目使用宋体/Times New Roman 五号、固定行距 17 磅、段前 3 磅，并绑定独立自动编号",
+        "ReferenceBody 样式写入 keepLines"
+      ]
+    },
+    {
       "name": "missing_cover_fields_edge_case",
       "prompt": "帮我按老师要求整理这个作业 Word，封面信息我还没填。",
       "inputs": ["格式要求.docx", "作业.docx"],
       "expected_conditions": [
-        "保留封面学院、班级、姓名、学号、指导老师字段",
+        "不生成封面或补全封面字段",
         "不自行猜测个人信息",
-        "检查报告明确指出封面信息需要人工补充"
+        "检查报告明确指出本技能只处理论文正文相关结构和版式"
       ]
     },
     {
@@ -72,27 +97,27 @@
       "prompt": "按老师给的格式要求自动整理论文，但不要把某个学校模板写死；优先从教师要求文档里提取规则，缺失时再回退默认值。",
       "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
       "expected_conditions": [
-        "脚本先解析教师格式要求文档中的显式规则与示例封面，再决定正文样式、页面设置、封面模板和最低字数",
+        "脚本先解析教师格式要求文档中的显式规则与示例样式，再决定正文样式、页面设置、摘要分页、参考文献格式和最低字数",
         "格式检查报告列出关键规则的来源，如教师要求文本、教师示例封面、论文现有主导编号或默认值",
-        "学校名称、课程名称、页边距和正文样式不是只能依赖单一硬编码模板"
+        "页边距和正文样式不是只能依赖单一硬编码模板"
       ]
     },
     {
       "name": "heading_levels_and_json_config_reuse",
-      "prompt": "把教师格式要求里的一级、二级、三级标题样式单独提取出来，并导出成可复用的 JSON 配置；下次直接用配置改论文。",
+      "prompt": "把教师格式要求里的一级、二级、三级、四级标题样式单独提取出来，并导出成可复用的 JSON 配置；下次直接用配置改论文。",
       "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
       "expected_conditions": [
-        "脚本能分别记录一级标题、二级标题、三级标题的字体、字号、对齐、段前和段后，缺失时说明是派生默认值",
+        "脚本能分别记录一级标题、二级标题、三级标题、四级标题的字体、字号、对齐、段前和段后，缺失时说明是派生默认值",
         "脚本支持把提取结果导出到 JSON 配置文件，并支持加载 JSON 配置直接执行格式化",
-        "格式检查报告列出一级、二级、三级标题样式及其来源"
+        "格式检查报告列出一级、二级、三级、四级标题样式及其来源"
       ]
     },
     {
       "name": "table_rules_and_schema_validation",
-      "prompt": "老师把一级、二级、三级标题格式写在 Word 表格里，请从表格里提取规则，并给 JSON 配置做稳定 schema 和校验。",
+      "prompt": "老师把一级、二级、三级、四级标题格式写在 Word 表格里，请从表格里提取规则，并给 JSON 配置做稳定 schema 和校验。",
       "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],
       "expected_conditions": [
-        "脚本能从教师文档表格中读取一级、二级、三级标题的字体、字号、对齐、段前和段后",
+        "脚本能从教师文档表格中读取一级、二级、三级、四级标题的字体、字号、对齐、段前和段后",
         "标题样式来源可以标记为教师要求表格",
         "JSON 配置在写出前和加载后都会校验 schema，不合法配置会报错",
         "脚本支持导出 schema 描述文件，供后续维护配置使用"

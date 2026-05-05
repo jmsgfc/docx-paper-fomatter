@@ -1,6 +1,6 @@
 ---
 name: docx-paper-formatter
-description: 使用 Word 样式和可复用多级编号规范化学术论文 docx：根据教师格式要求文档和待修改论文文档，识别论文标题、摘要、关键词、各级标题、正文、参考文献等，创建或复用 Word 多级列表，并把编号级别绑定到标题样式，输出规范化 docx、格式检查报告和可复用 JSON 配置。当用户要求“整理论文格式”、“按教师要求修改 docx”、“套用 Word 样式”、“建立可复用多级标题”、“新增同级标题自动编号”、“规范页码/参考文献”，或提供了教师格式要求文档与待修改论文文档时，请使用此技能。即使未明确提及多级编号，只要请求涉及使用可复用标题样式、Word 自动编号和参考文献自动编号来规范化学术论文 docx，也应使用此技能。
+description: 使用 Word 样式和可复用多级编号规范化学术论文 docx：根据教师格式要求文档和待修改论文文档，识别论文标题、中文/英文摘要、关键词、一级/二级/三级/四级标题、正文、参考文献、页边距、行距、缩进和页码，删除原有目录，创建或复用 Word 多级列表，并把编号级别绑定到标题样式，输出规范化 docx、格式检查报告和可复用 JSON 配置。Use when the user asks to “整理论文格式”, “按教师要求修改 docx”, “套用 Word 样式”, “不要直接改格式”, “建立可复用多级标题”, “新增同级标题自动编号”, “删除目录后自己生成目录”, “规范摘要分页/参考文献”, or provides a teacher format requirement document plus a paper document to revise. Even if the user does not explicitly mention multilevel numbering, this skill should be used whenever the request involves normalizing an academic paper DOCX with reusable heading styles, Word automatic numbering, abstract pagination, directory removal, and reference auto-numbering.
 ---
 
 # DOCX 论文格式规范化
@@ -40,6 +40,7 @@ description: 使用 Word 样式和可复用多级编号规范化学术论文 doc
 
 ```powershell
 where python
+python --version
 py -0
 conda env list
 Get-ChildItem -Force -Directory | Where-Object { $_.Name -in @('.venv','venv') }
@@ -52,37 +53,52 @@ Get-ChildItem -Force -Directory | Where-Object { $_.Name -in @('.venv','venv') }
 直接处理文档：
 
 ```powershell
-python path\to\format_paper_docx.py --teacher 教师格式要求.docx --paper 待修改论文.docx --out 待修改论文_格式规范化.docx --report 格式检查报告.md
+python path\to\format_paper_docx.py --teacher 教师格式要求.docx --paper 待修改论文.docx --config-out teacher-rules.json --schema-out teacher-rules-schema.json
 ```
+
+默认输出路径必须遵守：
+
+- 规范化后的 `.docx` 直接输出到待修改论文 `.docx` 的同级目录，命名为 `<原文件名>_格式规范化.docx`。
+- Markdown 格式检查报告、规则 JSON、JSON schema 等报告类文件统一输出到同级目录下的 `report` 文件夹。
+- 如果用户只传入报告类文件名而不带目录，也自动放入 `report` 文件夹。
 
 如果需要复用规则，先导出 JSON 配置：
 
 ```powershell
 python path\to\format_paper_docx.py --teacher 教师格式要求.docx --paper 待修改论文.docx --config-out teacher-rules.json --config-only
 python path\to\format_paper_docx.py --teacher 教师格式要求.docx --paper 待修改论文.docx --schema-out teacher-rules-schema.json --config-only
-python path\to\format_paper_docx.py --paper 待修改论文.docx --config teacher-rules.json --out 待修改论文_格式规范化.docx --report 格式检查报告.md
+python path\to\format_paper_docx.py --paper 待修改论文.docx --config report\teacher-rules.json
 ```
 
 脚本必须执行这些动作：
 
 - 解析教师要求文档，提取字体、字号、行距、缩进、页边距、页码和最低字数。
-- 单独解析一级、二级、三级标题的字体、字号、对齐、段前、段后。
+- 当教师文档包含“三、报告（论文）的版式要求”时，以该显式版式要求覆盖教师示例文档中的残留节属性和样式。
+- 单独解析一级、二级、三级、四级标题的字体、字号、对齐、段前、段后。
 - 把提取出的规则写成中间 JSON 配置，供后续重复使用。
 - 为 JSON 维护稳定 schema，并在写出前和加载后执行校验。
 - 当用户提供已有配置时，优先按配置执行，而不是重新猜测。
 - 识别论文结构并应用 Word 样式。
+- 保留论文中的表格、WPS 公式/OLE 对象、图片、绘图和嵌入媒体在原文中的相对位置，不删除、不重建；图片、公式和嵌入媒体不套用正文或标题格式，因为这些对象通常需要用户按学校要求手动微调。
+- 检测到表格时自动调整为论文常用三线表：只保留表格上粗线、下粗线、表栏目与表内容之间一条细线，不使用任何竖线，也不保留其他内部横线；表格内容和相对位置不改变。
+- 三线表边框必须同时写入表格级 `tblBorders` 和单元格级 `tcBorders`，因为 WPS/Word 可能用单元格边框覆盖表格边框；首行单元格上边框和末行单元格下边框写粗线，首行单元格下边框写细线，中间行下边框和所有竖线写 `nil`。
+- 当“表名”段落后紧跟表格时，只给表名段落写入居中、段前 6 磅、段后 6 磅和 `w:keepNext`（Word/WPS 中的“与下段同页”），让表名和表格尽量同页显示；表格本身不改格式。
 - 创建或复用 `word/numbering.xml`。
-- 为标题创建 Word 多级列表，并把 `PaperHeading1/2/3` 绑定到同一个 `numId`。
+- 为标题创建 Word 多级列表，并把 `PaperHeading1/2/3/4` 绑定到同一个 `numId`。
 - 为参考文献正文创建单独的自动编号列表，并把 `ReferenceBody` 绑定到独立 `numId`。
 - 移除标题和参考文献条目中原有的手写编号，避免重复编号。
+- 删除原文中已有的“目录”标题和目录条目，让用户后续在 Word 中自行生成目录。
 
 ### 4. 识别结构并应用样式
 
 #### 4.1 基础结构识别
 
 - 第一个非空段落识别为论文总标题，应用“论文标题”样式。
-- 以“摘要：”或“摘要:”开头的段落应用“摘要”样式。
+- 独立“摘 要”“摘要”段落应用“中文摘要标题”样式，后续中文摘要正文应用“中文摘要正文”样式。
+- 独立 `Abstract` 段落应用“英文摘要标题”样式，后续英文摘要正文应用“英文摘要正文”样式。
 - 以“关键词：”或“关键词:”开头的段落应用“关键词”样式。
+- 以 `Keywords:`、`Keywords：`、`Key words:`、`Key words：` 开头的段落应用“英文关键词”样式。
+- “目录”“目 录”和常见目录条目不输出到规范化文档。
 - “参考文献”“参考文献：”“参考资料”等独立段落应用“参考文献标题”样式。
 - 参考文献标题后的文献条目应用“参考文献正文”样式。
 - 其他论述性段落应用“论文正文”样式。
@@ -92,13 +108,14 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config teache
 - 一级标题应用 `PaperHeading1`，绑定 `ilvl=0`。
 - 二级标题应用 `PaperHeading2`，绑定 `ilvl=1`。
 - 三级标题应用 `PaperHeading3`，绑定 `ilvl=2`。
-- 三个标题样式和所有已识别标题段落必须引用同一个 `numId`。
+- 四级标题应用 `PaperHeading4`，绑定 `ilvl=3`。
+- 四个标题样式和所有已识别标题段落必须引用同一个 `numId`。
 - 如果段落中存在直接写入的 `numPr`，必须覆盖为当前统一 `numId` 与对应 `ilvl`。
 
 创建或复用多级列表时，必须同时完成两种绑定：
 
-- 在 `numbering.xml` 的对应级别中写入 `w:pStyle`，把第 1/2/3 级分别绑定到 `PaperHeading1/2/3`。
-- 在 `styles.xml` 的 `PaperHeading1/2/3` 样式中写入 `w:numPr`，使样式自身绑定到同一个 `numId` 和对应 `ilvl`。
+- 在 `numbering.xml` 的对应级别中写入 `w:pStyle`，把第 1/2/3/4 级分别绑定到 `PaperHeading1/2/3/4`。
+- 在 `styles.xml` 的 `PaperHeading1/2/3/4` 样式中写入 `w:numPr`，使样式自身绑定到同一个 `numId` 和对应 `ilvl`。
 
 #### 4.3 标题编号显示格式
 
@@ -109,17 +126,19 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config teache
 - `1 中国人工智能发展的政策基础`
 - `1.1 政策体系的持续完善`
 - `2.1.1 产业链条逐步完善`
+- `2.1.1.1 图象匹配`
 
 这必须通过 Word 编号级别中的 `w:suff="space"` 实现，因为这样用户后续新增同级标题时也会继承同样的显示方式。
 
 #### 4.4 标题层级识别优先级
 
-1. 优先识别 `1.1.1` 等三级数字编号为三级标题。
-2. 再识别 `1.1` 等二级数字编号为二级标题。
-3. 再识别 `一、`、`第一章` 或独立的 `1 `、`1、`、`1.` 等一级编号为一级标题。
-4. `（一）` 默认识别为二级标题。
-5. `1、` 只有在明显位于某二级标题之下时，才识别为三级标题。
-6. 无法判断层级时，不要强行套用标题样式。
+1. 优先识别 `1.1.1.1` 等四级数字编号为四级标题。
+2. 再识别 `1.1.1` 等三级数字编号为三级标题。
+3. 再识别 `1.1` 等二级数字编号为二级标题。
+4. 再识别 `一、`、`第一章` 或独立的 `1 `、`1、`、`1.` 等一级编号为一级标题。
+5. `（一）` 默认识别为二级标题。
+6. `1、` 只有在明显位于某二级标题之下时，才识别为三级标题。
+7. 无法判断层级时，不要强行套用标题样式。
 
 #### 4.5 编号体系保护
 
@@ -141,11 +160,22 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config teache
 按教师要求设置页面格式。默认值只用于兜底：
 
 - A4 纸。
-- 页边距：上 2 厘米、下 2 厘米、左 2.3 厘米、右 2.3 厘米。
-- 正文中文宋体小四，英文 Times New Roman 小四。
-- 正文固定行距 22 磅。
-- 正文段落首行缩进 2 字符。
-- 段前段后为 0。
+- 页边距：上 2.5 厘米、下 2 厘米、左 2.5 厘米、右 2 厘米。
+- 论文题目：小二黑体，居中，固定行距 30 磅。
+- 中文摘要标题：四号黑体，居中，固定行距 24 磅；中文摘要正文：小四宋体，固定行距 20 磅；关键词：小四宋体，固定行距 16 磅。
+- 英文摘要标题 `Abstract`：四号 Arial Black，居中，固定行距 24 磅；英文摘要正文：小四 Times New Roman，固定行距 16 磅；`Keywords`/`Key words`：小四 Arial Black，固定行距 16 磅。
+- 题目和中文摘要单独一页，英文摘要单独一页；分别在中文关键词和英文关键词后插入分页符。
+- 摘要分页不能让下一页顶部残留多余空白；优先给分页后的第一个有效段落写入 `w:pageBreakBefore`，并跳过分页点后的空段落，使正文或英文摘要从新页页顶开始。
+- 删除原文中已有目录，允许用户后续在 Word 中自行生成目录。
+- 正文中文宋体小四，英文 Times New Roman 小四，固定行距 20 磅。
+- 正文段落首行缩进 2 字符，段前 6 磅，段后 6 磅。
+- 一级标题黑体小二，固定行距 20 磅，段前 0 磅，段后 18 磅。
+- 二级标题黑体三号，固定行距 20 磅，段前 0 磅，段后 12 磅。
+- 三级标题黑体小三，固定行距 20 磅，段前 0 磅，段后 6 磅。
+- 四级标题黑体小四，固定行距 20 磅，段前 0 磅，段后 6 磅。
+- 各级标题对齐方式为两端对齐；文本之前和文本之后均为 0 字符；特殊格式为无；编号级别缩进也必须写入 `left=0`、`hanging=0`。
+- 参考文献标题必须单独起页，写入 `pageBreakBefore`；字体为宋体小四，居中，固定行距 20 磅，段前 0 磅，段后 30 磅。
+- 参考文献条目：字体为宋体小四，固定行距 17 磅，段前 3 磅，段后 0，首行缩进 0；使用独立自动编号，并写入 `keepLines` 以尽量避免条目中间断页。
 - 页脚居中页码，从 1 开始。
 
 ### 6. 自检并报告
@@ -153,28 +183,33 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config teache
 必须检查：
 
 - 是否识别论文标题、摘要、关键词。
-- 是否识别一级、二级、三级标题。
+- 是否识别一级、二级、三级、四级标题。
 - `numbering.xml` 是否存在并包含标题多级列表与参考文献编号列表。
-- 多级列表第 1/2/3 级是否通过 `pStyle` 绑定 `PaperHeading1/2/3`。
+- 多级列表第 1/2/3/4 级是否通过 `pStyle` 绑定 `PaperHeading1/2/3/4`。
 - 标题级别是否写入 `w:suff="space"`，确保编号后只有一个空格。
-- `PaperHeading1/2/3` 样式是否写入 `numPr`。
+- `PaperHeading1/2/3/4` 样式是否写入 `numPr`。
 - 当前标题段落是否也写入对应 `numPr`。
 - `ReferenceBody` 样式和参考文献段落是否绑定独立自动编号。
 - 所有标题样式与标题段落是否使用同一个 `numId`。
 - 原手写标题编号与参考文献手写序号是否已移除，或在报告中说明原因。
 - 正文段落是否绑定“论文正文”。
 - 参考文献标题与条目是否绑定对应样式。
-- 页边距、固定行距 22 磅、首行缩进 2 字符是否写入。
+- 参考文献标题是否写入 `pageBreakBefore` 并单独起页；参考文献标题和条目是否均为宋体小四。
+- 页边距、摘要分页、正文固定行距 20 磅、正文段前段后 6 磅、正文首行缩进 2 字符、各级标题段后间距、参考文献条目行距和自动编号是否写入。
+- 表格、WPS 公式/OLE 对象、图片、绘图和嵌入媒体数量是否与原文一致；表格是否调整为三线表，即表格级和单元格级均有可见上/下粗线、首行下细线、无竖线和其他内部横线；如果表名后紧跟表格，表名段落是否写入居中、段前 6 磅、段后 6 磅和 `keepNext`。
+- 中文关键词和英文关键词后的下一页首个有效段落是否写入 `pageBreakBefore`，且两者之间没有保留导致页顶空白的空段落。
 - 是否缺少摘要、关键词、参考文献，或存在标题层级无法判断、字数不足等风险。
+- 在检查结束后，回复一句“已经完成格式调整了喵~”
 
 ## 输出
 
 最终回复用户时给出：
 
 - 规范化后的 `.docx` 文件路径。
-- Markdown 格式检查报告路径。
-- 如有生成，中间 JSON 配置文件路径。
-- 如有生成，JSON schema 文件路径。
+- `report` 文件夹路径。
+- `report` 文件夹中的 Markdown 格式检查报告路径。
+- 如有生成，`report` 文件夹中的中间 JSON 配置文件路径。
+- 如有生成，`report` 文件夹中的 JSON schema 文件路径。
 - 已应用或新建的 Word 样式摘要。
 - 多级标题编号是否可复用的明确结论。
 - 参考文献自动编号是否可复用的明确结论。
@@ -185,6 +220,8 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config teache
 - 不要把标题编号写死成普通文本。
 - 不要把参考文献编号写死成普通文本。
 - 不要只创建标题外观样式而不写入 `numbering.xml` 与 `numPr`。
+- 不要保留原文手写目录，因为用户应在 Word 中基于标题样式自行生成目录。
 - 不要为了迎合教师格式要求而改变原论文的标题编号内容。
 - 不要擅自改写、扩写或删除论文正文。
+- 不要删除或重建表格、WPS 公式/OLE 对象、图片、绘图和嵌入媒体；表格只允许统一为三线表，图片、公式和嵌入媒体不改格式；只允许为紧邻表格前的表名段落补充居中、段前/段后 6 磅和“与下段同页”。
 - 不要处理封面生成、封面模板或封面字段补位，因为当前技能只规范化论文正文内容。
