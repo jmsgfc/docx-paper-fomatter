@@ -2,6 +2,43 @@
   "skill": "docx-paper-formatter",
   "test_cases": [
     {
+      "name": "script_first_execution_path",
+      "prompt": "$docx-paper-formatter 格式参考.docx 3333.docx",
+      "inputs": ["格式参考.docx", "3333.docx"],
+      "expected_conditions": [
+        "执行 scripts/format_paper_docx.py，而不是只根据 SKILL.md 手动描述格式规则",
+        "不覆盖原始 3333.docx",
+        "输出 3333_格式规范化.docx",
+        "输出 report/3333_格式检查报告.md",
+        "输出 report/teacher-rules.json 和 report/teacher-rules-schema.json",
+        "随后执行 scripts/verify_formatted_docx.py 验收生成的 docx"
+      ]
+    },
+    {
+      "name": "verification_required_before_completion",
+      "prompt": "按老师格式整理论文，完成后告诉我标题编号和参考文献编号是否真的可复用。",
+      "inputs": ["格式参考.docx", "论文.docx"],
+      "expected_conditions": [
+        "格式化后运行 verify_formatted_docx.py",
+        "验收检查 word/numbering.xml、word/styles.xml、word/document.xml 是否存在",
+        "验收检查 PaperHeading1/PaperHeading2/PaperHeading3/PaperHeading4 是否存在并包含 numPr",
+        "验收检查 numbering.xml 是否通过 pStyle 绑定四级标题样式",
+        "验收检查 ReferenceBody 是否绑定自动编号",
+        "只有验收通过后才声明任务完成"
+      ]
+    },
+    {
+      "name": "failure_policy_no_fake_completion",
+      "prompt": "如果脚本跑不起来，也不要假装完成；把失败原因告诉我。",
+      "inputs": ["不存在的格式参考.docx", "论文.docx"],
+      "expected_conditions": [
+        "如果输入文件、Python 环境、lxml、格式化脚本或验收脚本失败，停止流程",
+        "报告失败命令、退出码、错误输出和缺失文件",
+        "不创建手工替代 docx 掩盖失败",
+        "不回复已经完成格式调整了喵~"
+      ]
+    },
+    {
       "name": "teacher_format_and_reusable_heading_numbering",
       "prompt": "请根据教师格式要求文档，把待修改论文文档整理成规范 Word 样式，并建立可复用多级标题编号，后续新增同级标题要能继续编号。",
       "inputs": ["教师格式要求.docx", "待修改论文文档.docx"],

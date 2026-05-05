@@ -9,9 +9,60 @@ description: 使用 Word 样式和可复用多级编号规范化学术论文 doc
 
 本技能用于把“教师格式要求 docx”和“待修改论文 docx”转化为一个通过 Word 样式与多级列表统一管理的规范化论文文档。
 
-优先运行 `scripts/format_paper_docx.py`，因为它会先从教师文档中提取规则，再写入 OOXML 的 `styles.xml`、`numbering.xml`、节属性和页脚页码。
+本技能是脚本优先的执行型技能。必须运行 `scripts/format_paper_docx.py`，因为它会先从教师文档中提取规则，再写入 OOXML 的 `styles.xml`、`numbering.xml`、节属性和页脚页码。不要只阅读规则后手动猜测格式。
 
 本技能当前只处理论文正文内容，不处理封面生成、封面示例复用或封面字段补位。
+
+## Quick Start
+
+从用户当前工作目录运行以下命令。把 `<skill_dir>` 替换为本技能文件夹，把文件名替换为用户提供的教师格式要求文档和待修改论文文档。
+
+```powershell
+python <skill_dir>\scripts\format_paper_docx.py --teacher "格式参考.docx" --paper "3333.docx" --config-out teacher-rules.json --schema-out teacher-rules-schema.json
+```
+
+完成后必须运行验收脚本：
+
+```powershell
+python <skill_dir>\scripts\verify_formatted_docx.py --docx "3333_格式规范化.docx" --report "report\3333_格式检查报告.md"
+```
+
+预期输出：
+
+- `<论文原文件名>_格式规范化.docx`
+- `report\<论文原文件名>_格式检查报告.md`
+- `report\teacher-rules.json`
+- `report\teacher-rules-schema.json`
+
+## Non-Negotiable Execution Path
+
+按下面顺序执行；只有全部完成并通过验收，才可以告诉用户“已经完成格式调整了喵~”。
+
+1. 确认教师格式要求 `.docx` 和待修改论文 `.docx` 存在；如果无法区分两个文件，先向用户确认。
+2. 检查 Python 环境和 `lxml`；如果缺少依赖，先说明当前环境，再请求用户批准安装。
+3. 运行 `scripts/format_paper_docx.py`；不要手动重写格式化逻辑，因为 Word 样式和自动编号依赖 OOXML 结构。
+4. 运行 `scripts/verify_formatted_docx.py` 验证输出文档；不要跳过验收，因为只看文件存在不能证明编号可复用。
+5. 汇报规范化 docx、report 文件夹、Markdown 报告、JSON 配置、schema、标题编号复用结论、参考文献编号复用结论和需要人工确认的风险。
+
+## Failure Policy
+
+如果任一步失败，停止并报告失败信息，不要假装完成。
+
+- 如果格式化脚本失败，报告执行命令、退出码、错误输出和缺失文件。
+- 如果验收脚本失败，报告失败检查项，并说明生成的 docx 不能确认合格。
+- 如果缺少 Python 或 `lxml`，先完成环境检查，再请求安装批准。
+- 不要创建一个手工替代 docx 来掩盖脚本失败。
+
+## Required Verification
+
+验收脚本必须至少确认：
+
+- `word/numbering.xml`、`word/styles.xml`、`word/document.xml` 存在。
+- `PaperHeading1/2/3/4` 样式存在，并且样式自身包含 `numPr`。
+- `numbering.xml` 中第 1/2/3/4 级通过 `pStyle` 绑定 `PaperHeading1/2/3/4`。
+- 标题编号级别写入 `w:suff="space"`。
+- `ReferenceBody` 样式存在，并绑定独立自动编号。
+- 文档中存在段落级编号，报告文件存在且包含编号检查结果。
 
 ## 规则优先级
 
@@ -94,7 +145,7 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config report
 #### 4.1 基础结构识别
 
 - 第一个非空段落识别为论文总标题，应用“论文标题”样式。
-- 独立“摘 要”“摘要”段落应用“中文摘要标题”样式，后续中文摘要正文应用“中文摘要正文”样式。
+- 独立“摘 要”“摘  要”段落应用“中文摘要标题”样式，后续中文摘要正文应用“中文摘要正文”样式。
 - 独立 `Abstract` 段落应用“英文摘要标题”样式，后续英文摘要正文应用“英文摘要正文”样式。
 - 以“关键词：”或“关键词:”开头的段落应用“关键词”样式。
 - 以 `Keywords:`、`Keywords：`、`Key words:`、`Key words：` 开头的段落应用“英文关键词”样式。
@@ -180,7 +231,13 @@ python path\to\format_paper_docx.py --paper 待修改论文.docx --config report
 
 ### 6. 自检并报告
 
-必须检查：
+先运行验收脚本：
+
+```powershell
+python path\to\verify_formatted_docx.py --docx 规范化后的论文.docx --report report\格式检查报告.md
+```
+
+再确认以下检查项：
 
 - 是否识别论文标题、摘要、关键词。
 - 是否识别一级、二级、三级、四级标题。

@@ -264,6 +264,12 @@ def format_three_line_table(tbl):
         tbl_pr = etree.Element(w("tblPr"))
         tbl.insert(0, tbl_pr)
 
+    jc = tbl_pr.find("w:jc", NS)
+    if jc is None:
+        jc = etree.Element(w("jc"))
+        tbl_pr.append(jc)
+    jc.set(w("val"), "center")
+
     remove_child(tbl_pr, "tblBorders")
     tbl_borders = child(tbl_pr, "tblBorders")
     set_border(tbl_borders, "top", sz="12")
